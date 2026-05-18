@@ -22,6 +22,16 @@ const client = new MongoClient(uri, {
   }
 });
 
+const logger= (req, res, next) => {
+  next()
+}
+
+const verifyToken= async (req, res, next) => {
+  const {authorization} = req.headers;
+  next()
+}
+
+
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
@@ -45,7 +55,8 @@ async function run() {
      })
 
 
-     app.get('/courses/:id',  async (req, res) => {
+     app.get('/courses/:id',logger , verifyToken, async (req, res) => {
+      
       const {id} = req.params ;
       const query = {_id : new ObjectId(id)} ;
       const result = await petCollection.findOne(query)
