@@ -9,8 +9,7 @@ const port = process.env.port || 3137 ;
 
 
 
-const uri = "mongodb+srv://Pet-Project:LDThrrsYCN7jYk2v@cluster0.m0ccqsz.mongodb.net/?appName=Cluster0";
-
+const uri = process.env.MONGODB_URL;
 
 
 
