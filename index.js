@@ -88,6 +88,13 @@ async function run() {
       res.send(result)
      })
 
+     app.post('/courses', async (req, res) => {
+       const newCourse = req.body;
+       const result = await petCollection.insertOne(newCourse);
+       res.send(result);
+     })
+
+
      app.get('/card',  async (req, res) => {
       const cursor = petCollection.find().limit(4);
       const result = await cursor.toArray()
