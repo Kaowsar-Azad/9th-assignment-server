@@ -68,24 +68,29 @@ async function run() {
     
      app.get('/courses',  async (req, res) => {
 
-      const { search } = req.query ;
-      let cursor ;
-      if(search) {
-        cursor = petCollection.find({
-         $or : [
-          {instructor: {$regex : search, $options : 'i'}},
-          { title: { $regex : search, $options : 'i' } }
-         ]
-        })
-      }
-      else{
-         cursor = petCollection.find();
+      const { search, category } = req.query;
+      const filters = [];
+
+      if (category) {
+        filters.push({ species: { $regex: `^${category}$`, $options: 'i' } });
       }
 
-      
-      const result = await cursor.toArray()
-      console.log(result);
-      res.send(result)
+      if (search) {
+        filters.push({
+          $or: [
+            { petName: { $regex: search, $options: 'i' } },
+            { species: { $regex: search, $options: 'i' } },
+            { breed: { $regex: search, $options: 'i' } },
+            { location: { $regex: search, $options: 'i' } },
+            { title: { $regex: search, $options: 'i' } },
+            { instructor: { $regex: search, $options: 'i' } },
+          ],
+        });
+      }
+
+      const query = filters.length ? { $and: filters } : {};
+      const result = await petCollection.find(query).toArray();
+      res.send(result);
      })
 
      app.post('/courses', async (req, res) => {
@@ -96,7 +101,7 @@ async function run() {
 
 
      app.get('/card',  async (req, res) => {
-      const cursor = petCollection.find().limit(4);
+      const cursor = petCollection.find().limit(6);
       const result = await cursor.toArray()
       res.send(result)
      })
@@ -130,8 +135,19 @@ async function run() {
       if (!course) {
         return res.status(404).json({ message: "Course not found" }); 
       }
-     
-      
+
+      const ownerEmail = course.ownerEmail?.toLowerCase().trim();
+      const userEmail = (
+        req.user?.email ||
+        enrollmentData.studentEmail ||
+        ''
+      ).toLowerCase().trim();
+
+      if (ownerEmail && userEmail && ownerEmail === userEmail) {
+        return res.status(403).json({
+          message: "You cannot adopt a pet you listed yourself.",
+        });
+      }
       
       await petCollection.updateOne(
         { _id: new ObjectId(id) },
@@ -150,6 +166,83 @@ async function run() {
 
       res.send(result);
      });
+
+     app.get('/enrollments/pet/:petId', verifyToken, async (req, res) => {
+       try {
+         const { petId } = req.params;
+         const query = { courseId: petId };
+         const result = await enrollmentCollection.find(query).toArray();
+         res.send(result);
+       } catch (error) {
+         res.status(500).send({ message: "Internal server error" });
+       }
+     });
+
+     app.patch('/enrollments/update/:enrollmentId', verifyToken, async (req, res) => {
+       try {
+         const { enrollmentId } = req.params;
+         const { status } = req.body;
+         if (!['Approved', 'Rejected'].includes(status)) {
+           return res.status(400).json({ message: "Invalid status" });
+         }
+         const result = await enrollmentCollection.updateOne(
+           { _id: new ObjectId(enrollmentId) },
+           { $set: { status, updatedAt: new Date() } }
+         );
+         res.send(result);
+       } catch (error) {
+         res.status(500).send({ message: "Internal server error" });
+       }
+     });
+
+     app.delete('/enrollments/cancel/:enrollmentId', verifyToken, async (req, res) => {
+       try {
+         const { enrollmentId } = req.params;
+         const result = await enrollmentCollection.deleteOne({ _id: new ObjectId(enrollmentId) });
+         res.send(result);
+       } catch (error) {
+         res.status(500).send({ message: "Internal server error" });
+       }
+     });
+
+     app.patch('/courses/update/:id', verifyToken, async (req, res) => {
+       try {
+         const { id } = req.params;
+         const updateData = req.body;
+         const userEmail = req.user?.email?.toLowerCase().trim();
+         const pet = await petCollection.findOne({ _id: new ObjectId(id) });
+         if (!pet) return res.status(404).json({ message: "Pet not found" });
+         if (pet.ownerEmail?.toLowerCase().trim() !== userEmail) {
+           return res.status(403).json({ message: "You are not the owner of this pet." });
+         }
+         delete updateData._id;
+         const result = await petCollection.updateOne(
+           { _id: new ObjectId(id) },
+           { $set: { ...updateData, updatedAt: new Date() } }
+         );
+         res.send(result);
+       } catch (error) {
+         res.status(500).send({ message: "Internal server error" });
+       }
+     });
+
+     app.delete('/courses/delete/:id', verifyToken, async (req, res) => {
+       try {
+         const { id } = req.params;
+         const userEmail = req.user?.email?.toLowerCase().trim();
+         const pet = await petCollection.findOne({ _id: new ObjectId(id) });
+         if (!pet) return res.status(404).json({ message: "Pet not found" });
+         if (pet.ownerEmail?.toLowerCase().trim() !== userEmail) {
+           return res.status(403).json({ message: "You are not the owner of this pet." });
+         }
+         const result = await petCollection.deleteOne({ _id: new ObjectId(id) });
+         res.send(result);
+       } catch (error) {
+         res.status(500).send({ message: "Internal server error" });
+       }
+     });
+
+
 
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
