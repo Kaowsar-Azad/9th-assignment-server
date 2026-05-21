@@ -19,7 +19,6 @@ const uri = process.env.MONGODB_URL;
     )
 
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -66,12 +65,14 @@ async function run() {
     const enrollmentCollection = bd.collection("enrollments")
     
      app.get('/courses',  async (req, res) => {
-
       const { search, category } = req.query;
       const filters = [];
 
       if (category) {
-        filters.push({ species: { $regex: `^${category}$`, $options: 'i' } });
+        const categories = category.split(',').map(c => c.trim()).filter(Boolean);
+        if (categories.length > 0) {
+          filters.push({ species: { $in: categories.map(c => new RegExp(`^${c}$`, 'i')) } });
+        }
       }
 
       if (search) {
@@ -118,6 +119,8 @@ async function run() {
        try {
          const { id } = req.params;
          const query = { userId: id };
+
+
          const result = await enrollmentCollection.find(query).toArray();
          res.send(result);
        } catch (error) {
@@ -137,10 +140,7 @@ async function run() {
 
       const ownerEmail = course.ownerEmail?.toLowerCase().trim();
       const userEmail = (
-        req.user?.email ||
-        enrollmentData.studentEmail ||
-        ''
-      ).toLowerCase().trim();
+        req.user?.email || enrollmentData.studentEmail || '').toLowerCase().trim();
 
       if (ownerEmail && userEmail && ownerEmail === userEmail) {
         return res.status(403).json({
@@ -186,7 +186,8 @@ async function run() {
          }
          const result = await enrollmentCollection.updateOne(
            { _id: new ObjectId(enrollmentId) },
-           { $set: { status, updatedAt: new Date() } }
+           { $set: 
+            { status, updatedAt: new Date() } }
          );
          res.send(result);
        } catch (error) {
@@ -197,7 +198,7 @@ async function run() {
      app.delete('/enrollments/cancel/:enrollmentId', verifyToken, async (req, res) => {
        try {
          const { enrollmentId } = req.params;
-         const result = await enrollmentCollection.deleteOne({ _id: new ObjectId(enrollmentId) });
+            const result = await enrollmentCollection.deleteOne({ _id: new ObjectId(enrollmentId) });
          res.send(result);
        } catch (error) {
          res.status(500).send({ message: "Internal server error" });
@@ -221,6 +222,7 @@ async function run() {
          );
          res.send(result);
        } catch (error) {
+
          res.status(500).send({ message: "Internal server error" });
        }
      });
@@ -229,8 +231,10 @@ async function run() {
        try {
          const { id } = req.params;
          const userEmail = req.user?.email?.toLowerCase().trim();
+
          const pet = await petCollection.findOne({ _id: new ObjectId(id) });
          if (!pet) return res.status(404).json({ message: "Pet not found" });
+         
          if (pet.ownerEmail?.toLowerCase().trim() !== userEmail) {
            return res.status(403).json({ message: "You are not the owner of this pet." });
          }
@@ -245,8 +249,7 @@ async function run() {
 
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
-    // Ensures that the client will close when you finish/error
-    //await client.close();
+   
   }
 }
 run().catch(console.dir);
