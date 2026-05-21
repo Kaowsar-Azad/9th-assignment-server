@@ -93,7 +93,7 @@ async function run() {
       res.send(result);
      })
 
-     app.post('/courses', async (req, res) => {
+     app.post('/courses', verifyToken, async (req, res) => {
        const newCourse = req.body;
        const result = await petCollection.insertOne(newCourse);
        res.send(result);
