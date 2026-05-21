@@ -40,8 +40,9 @@ const verifyToken= async (req, res, next) => {
   }
 
   try {
+    const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
     const JWKS = createRemoteJWKSet(
-      new URL('http://localhost:3000/api/auth/jwks')
+      new URL(`${clientUrl}/api/auth/jwks`)
     )
     const { payload } = await jwtVerify(token, JWKS)
     req.user = payload;
@@ -50,15 +51,13 @@ const verifyToken= async (req, res, next) => {
     console.error('Token validation failed:', error)
     return res.status(401).json({message : "Unauthorized"})
   }
-
-  
 }
 
 
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+   //  await client.connect();
     // Send a ping to confirm a successful connection
     //await client.db("admin").command({ ping: 1 });
    
