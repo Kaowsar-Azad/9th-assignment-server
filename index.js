@@ -82,8 +82,6 @@ async function run() {
             { species: { $regex: search, $options: 'i' } },
             { breed: { $regex: search, $options: 'i' } },
             { location: { $regex: search, $options: 'i' } },
-            { title: { $regex: search, $options: 'i' } },
-            { instructor: { $regex: search, $options: 'i' } },
           ],
         });
       }
@@ -159,70 +157,103 @@ async function run() {
      });
      
           app.patch('/enrollments/:id', verifyToken, async (req, res) => {
-      const { id } = req.params;
-      const enrollmentData = req.body;
-      
-      const course = await petCollection.findOne({ _id: new ObjectId(id) });
-      if (!course) {
-        return res.status(404).json({ message: "Course not found" }); 
-      }
+       const { id } = req.params;
+       const enrollmentData = req.body;
+       
+       const course = await petCollection.findOne({ _id: new ObjectId(id) });
+       if (!course) {
+         return res.status(404).json({ message: "Course not found" }); 
+       }
 
-      const ownerEmail = course.ownerEmail?.toLowerCase().trim();
-      const userEmail = (
-        req.user?.email || enrollmentData.studentEmail || '').toLowerCase().trim();
+       if (course.status === "Adopted") {
+         return res.status(400).json({ message: "This pet has already been adopted." });
+       }
 
-      if (ownerEmail && userEmail && ownerEmail === userEmail) {
-        return res.status(403).json({
-          message: "You cannot adopt a pet you listed yourself.",
-        });
-      }
-      
-      await petCollection.updateOne(
-        { _id: new ObjectId(id) },
-        {
-          $inc: { enrollCount: 1 },
-          $set: {
-            lastEnrolledAt: new Date()
-          }
-        }
-      );
+       const ownerEmail = course.ownerEmail?.toLowerCase().trim();
+       const userEmail = (
+         req.user?.email || enrollmentData.studentEmail || '').toLowerCase().trim();
 
-      const result = await enrollmentCollection.insertOne({
-        ...enrollmentData, 
-        enrolledAt: new Date()
+       if (ownerEmail && userEmail && ownerEmail === userEmail) {
+         return res.status(403).json({
+           message: "You cannot adopt a pet you listed yourself.",
+         });
+       }
+       
+       await petCollection.updateOne(
+         { _id: new ObjectId(id) },
+         {
+           $inc: { enrollCount: 1 },
+           $set: {
+             lastEnrolledAt: new Date()
+           }
+         }
+       );
+
+       const result = await enrollmentCollection.insertOne({
+         ...enrollmentData, 
+         enrolledAt: new Date()
+       });
+
+       res.send(result);
       });
 
-      res.send(result);
-     });
+      app.get('/enrollments/pet/:petId', verifyToken, async (req, res) => {
+        try {
+          const { petId } = req.params;
+          const query = { courseId: petId };
+          const result = await enrollmentCollection.find(query).toArray();
+          res.send(result);
+        } catch (error) {
+          res.status(500).send({ message: "Internal server error" });
+        }
+      });
 
-     app.get('/enrollments/pet/:petId', verifyToken, async (req, res) => {
-       try {
-         const { petId } = req.params;
-         const query = { courseId: petId };
-         const result = await enrollmentCollection.find(query).toArray();
-         res.send(result);
-       } catch (error) {
-         res.status(500).send({ message: "Internal server error" });
-       }
-     });
+      app.patch('/enrollments/update/:enrollmentId', verifyToken, async (req, res) => {
+        try {
+          const { enrollmentId } = req.params;
+          const { status } = req.body;
+          if (!['Approved', 'Rejected'].includes(status)) {
+            return res.status(400).json({ message: "Invalid status" });
+          }
 
-     app.patch('/enrollments/update/:enrollmentId', verifyToken, async (req, res) => {
-       try {
-         const { enrollmentId } = req.params;
-         const { status } = req.body;
-         if (!['Approved', 'Rejected'].includes(status)) {
-           return res.status(400).json({ message: "Invalid status" });
-         }
-         const result = await enrollmentCollection.updateOne(
-           { _id: new ObjectId(enrollmentId) },
-           { $set: 
-            { status, updatedAt: new Date() } }
-         );
-         res.send(result);
-       } catch (error) {
-         res.status(500).send({ message: "Internal server error" });
-       }
-     });
+          const enrollment = await enrollmentCollection.findOne({ _id: new ObjectId(enrollmentId) });
+          if (!enrollment) {
+            return res.status(404).json({ message: "Request not found" });
+          }
+
+          const pet = await petCollection.findOne({ _id: new ObjectId(enrollment.courseId) });
+          if (!pet) {
+            return res.status(404).json({ message: "Pet not found" });
+          }
+
+          if (status === 'Approved') {
+            if (pet.status === 'Adopted') {
+              return res.status(400).json({ message: "This pet has already been adopted." });
+            }
+
+            // Mark pet as adopted
+            await petCollection.updateOne(
+              { _id: new ObjectId(enrollment.courseId) },
+              { $set: { status: 'Adopted', updatedAt: new Date() } }
+            );
+
+            // Reject all other pending requests for the same pet
+            await enrollmentCollection.updateMany(
+              { courseId: enrollment.courseId, _id: { $ne: new ObjectId(enrollmentId) }, status: 'Pending' },
+              { $set: { status: 'Rejected', updatedAt: new Date() } }
+            );
+          }
+
+          const result = await enrollmentCollection.updateOne(
+            { _id: new ObjectId(enrollmentId) },
+            { $set: { status, updatedAt: new Date() } }
+          );
+          res.send(result);
+        } catch (error) {
+          console.error("Error updating enrollment status:", error);
+          res.status(500).send({ message: "Internal server error" });
+        }
+      });
 
      app.delete('/enrollments/cancel/:enrollmentId', verifyToken, async (req, res) => {
        try {
