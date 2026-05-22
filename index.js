@@ -65,7 +65,7 @@ async function run() {
     const enrollmentCollection = bd.collection("enrollments")
     
      app.get('/courses',  async (req, res) => {
-      const { search, category } = req.query;
+      const { search, category, sort } = req.query;
       const filters = [];
 
       if (category) {
@@ -89,7 +89,36 @@ async function run() {
       }
 
       const query = filters.length ? { $and: filters } : {};
-      const result = await petCollection.find(query).toArray();
+      let result = await petCollection.find(query).toArray();
+
+      if (sort) {
+        if (sort === 'fee-asc') {
+          result.sort((a, b) => {
+            const feeA = parseFloat(String(a.adoptionFee).replace(/[^0-9.]/g, '')) || 0;
+            const feeB = parseFloat(String(b.adoptionFee).replace(/[^0-9.]/g, '')) || 0;
+            return feeA - feeB;
+          });
+        } else if (sort === 'fee-desc') {
+          result.sort((a, b) => {
+            const feeA = parseFloat(String(a.adoptionFee).replace(/[^0-9.]/g, '')) || 0;
+            const feeB = parseFloat(String(b.adoptionFee).replace(/[^0-9.]/g, '')) || 0;
+            return feeB - feeA;
+          });
+        } else if (sort === 'age-asc') {
+          result.sort((a, b) => {
+            const ageA = parseFloat(String(a.age).replace(/[^0-9.]/g, '')) || 0;
+            const ageB = parseFloat(String(b.age).replace(/[^0-9.]/g, '')) || 0;
+            return ageA - ageB;
+          });
+        } else if (sort === 'age-desc') {
+          result.sort((a, b) => {
+            const ageA = parseFloat(String(a.age).replace(/[^0-9.]/g, '')) || 0;
+            const ageB = parseFloat(String(b.age).replace(/[^0-9.]/g, '')) || 0;
+            return ageB - ageA;
+          });
+        }
+      }
+
       res.send(result);
      })
 
@@ -107,7 +136,7 @@ async function run() {
      })
 
 
-     app.get('/courses/:id',logger , verifyToken, async (req, res) => {
+     app.get('/courses/:id', logger, async (req, res) => {
       
       const {id} = req.params ;
       const query = {_id : new ObjectId(id)} ;
@@ -256,7 +285,7 @@ run().catch(console.dir);
 
 
 app.get('/', (req, res) => {
-  res.send('Hello World!')
+  res.send('Server  is running')
 })
 
 app.listen(port, () => {
